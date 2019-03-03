@@ -10,7 +10,6 @@ IntensityDistribution::IntensityDistribution(std::vector<std::array<float, 3>> h
 	this->valueSpan[0] = valueSpan[0];
 	this->valueSpan[1] = valueSpan[1];
 	values = hsvValues;
-	distribution.resize(3);
 	
 }
 
@@ -18,6 +17,7 @@ void IntensityDistribution::calcAllValues(int channel, int valueRange, int resta
 {
 	for (int x = 0; x < valueRange; x++)
 	{
+		//calculate value at x and add it to the distribution list/vector
 		distribution[channel].push_back(calcValueAt(channel, x));
 
 		if (restartRange)
@@ -37,6 +37,8 @@ float IntensityDistribution::calcValueAt(int channel, int x)
 	{
 		for (std::array<float, 3> hsvValue : values)
 		{
+			//normal distribution function * saturation and brightness at of that pixel
+			//this makes "weak" pixels have less of an impact on the graph
 			outValue += exp(pow(x - hsvValue[0], 2) / valueSpan[0] * (-1))
 				* hsvValue[1]
 				* hsvValue[2];
@@ -59,9 +61,11 @@ std::vector<std::array<float, 2>> IntensityDistribution::findMaxima(int channel)
 	std::array<float, 2> previousValue = {-1, -1};
 	bool upwardDirection = true;
 
+	//"walks" through all the graph
 	for (int valueIndex = 0; valueIndex < distribution[channel].size(); valueIndex++)
 	{
-		//distribution[channel][valueIndex]
+		//if the current value is lower than the previous and we were previously going upwards, the previous value is a maxima
+		// > 10 to keep out unnoticeable colors
 		if (distribution[channel][valueIndex] < previousValue[1] && upwardDirection && previousValue[1] > 10)
 		{
 			std::array<float, 2> tmpMaxima = {valueIndex - 1, distribution[channel][valueIndex - 1]};

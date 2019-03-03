@@ -40,42 +40,17 @@ void ColorAnalysis::analyseImg()
 
 	IntensityDistribution intDest(hsvValues, valueSpan);
 	intDest.calcAllValues(0, 360, 50, 360);
-	intDest.calcAllValues(1, 100);
-	intDest.calcAllValues(2, 100);
-	//intDest.printFunction(0, true);
-	//std::cout << "Maxima for Hue:\n";
 	maxima = intDest.findMaxima(0);
 	sortMaxima();
-	/*std::cout << "Maxima for Saturation:\n";
-	intDest.findMaxima(1);
-	std::cout << "Maxima for Value:\n";
-	intDest.findMaxima(2);*/
 	avrSat = intDest.average(1);
-	//float avrSatDevia = intDest.deviation(1, avrSat);
 	avrVal = intDest.average(2);
-	//float avrValDevia = intDest.deviation(2, avrVal);
-	/*std::cout << "Average Saturation:\n";
-	std::cout << avrSat << std::endl;
-	//std::cout << avrSatDevia << std::endl;
-	std::cout << "Average Value:\n";
-	std::cout << avrVal << std::endl;*/
-	//std::cout << avrValDevia << std::endl;
-	/*int test = 0;
-	std::cout << "Hue func: ";
-	std::cin >> test;
-	intDest.printFunction(0);
-	std::cout << "Sat func: ";
-	std::cin >> test;
-	intDest.printFunction(1);
-	std::cout << "Val func: ";
-	std::cin >> test;
-	intDest.printFunction(2);*/
 
 }
 
 
 std::array<float, 3> ColorAnalysis::rgbToHsv(int* rgb)
 {
+	//straight from so
 	std::array<float, 3> hsv;
 	int min = rgb[0] < rgb[1] ? rgb[0] : rgb[1];
 	min = min < rgb[2] ? min : rgb[2];
@@ -119,10 +94,12 @@ std::array<float, 3> ColorAnalysis::rgbToHsv(int* rgb)
 json ColorAnalysis::dataSummary()
 {
 	json out = json::object();
+
 	out["hue_maximas"] = json::array();
 	for (std::array<float, 2> maximaPoint : maxima) {
 		out["hue_maximas"].push_back(maximaPoint);
 	}
+
 	out["avr_sat"] = avrSat;
 	out["avr_val"] = avrVal;
 
