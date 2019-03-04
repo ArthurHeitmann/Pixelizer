@@ -66,7 +66,7 @@ std::vector<std::array<float, 2>> IntensityDistribution::findMaxima(int channel)
 	{
 		//if the current value is lower than the previous and we were previously going upwards, the previous value is a maxima
 		// > 10 to keep out unnoticeable colors
-		if (distribution[channel][valueIndex] < previousValue[1] && upwardDirection && previousValue[1] > 10)
+		if (distribution[channel][valueIndex] < previousValue[1] && upwardDirection && previousValue[1] > 5)
 		{
 			std::array<float, 2> tmpMaxima = {valueIndex - 1, distribution[channel][valueIndex - 1]};
 			maxima.push_back(tmpMaxima);

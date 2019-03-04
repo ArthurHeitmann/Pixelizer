@@ -103,13 +103,32 @@ json ColorAnalysis::dataSummary()
 	out["avr_sat"] = avrSat;
 	out["avr_val"] = avrVal;
 
+	if (avrSat < 0.1 || avrVal < 0.07)												//extremely low sat or brightnes --> hue cannot be seen anymore
+			out["category"] = 2;													//grayscale
+	else if (maxima.size() == 1 || 
+		maxima[0][1] / maxima[1][1] > 1.25 || 
+		colorCircleDistance(maxima[0][0], maxima[1][0]) < 50)
+		out["category"] = 0;													//strong main color in image
+	else
+		out["category"] = 1;													//multiple important colors --> this image doesn't have a clear main color
+	
+
+
 
 	return out;
 }
 
+int ColorAnalysis::colorCircleDistance(int hue1, int hue2)
+{
+	int minDistance = abs(hue1 - hue2);
+
+
+	return minDistance > 180 ? 360 - minDistance : minDistance;
+}
+
 void ColorAnalysis::sortMaxima()
 {
-	std::map<float, float> tmpMaximaMap;
+	std::map<float, float, std::greater<float>> tmpMaximaMap;
 	std::vector<std::array<float, 2>> newMaxima;
 	for (std::array<float, 2> maximaPoint : maxima) {
 		tmpMaximaMap.insert(std::pair<float, float>(maximaPoint[1], maximaPoint[0]));

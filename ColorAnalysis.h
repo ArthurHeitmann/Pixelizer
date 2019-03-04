@@ -45,5 +45,7 @@ public:
 	 * returns hue maxima and average saturation and brightnes in a json object
 	 */
 	json dataSummary();
+
+	int colorCircleDistance(int hue1, int hue2);
 };
 

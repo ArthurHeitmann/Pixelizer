@@ -29,9 +29,12 @@ void generateColorTable(std::string path, int fileCount) {
 		std::string filePath = path + "/img (";
 		filePath += std::to_string(i);
 		filePath += ").bmp";
+
 		ColorAnalysis ca(filePath.c_str(), true, 20);
 
 		colorTable["colorTable"].push_back(ca.dataSummary());
+		colorTable["colorTable"][i - 1]["file_path"] = filePath;
+		colorTable["colorTable"][i - 1]["id"] = i - 1;
 	}
 
 	std::ofstream colorTableFile;
