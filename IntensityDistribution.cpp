@@ -58,21 +58,21 @@ float IntensityDistribution::calcValueAt(int channel, int x)
 std::vector<std::array<float, 2>> IntensityDistribution::findMaxima(int channel)
 {
 	std::vector<std::array<float, 2>> maxima;
-	std::array<float, 2> previousValue = {-1, -1};
+	std::array<float, 2> previousValue = {0, distribution[channel][0]};
 	bool upwardDirection = true;
 
 	//"walks" through all the graph
-	for (int valueIndex = 0; valueIndex < distribution[channel].size(); valueIndex++)
+	for (int valueIndex = 1; valueIndex < distribution[channel].size(); valueIndex++)
 	{
 		//if the current value is lower than the previous and we were previously going upwards, the previous value is a maxima
 		// > 10 to keep out unnoticeable colors
-		if (distribution[channel][valueIndex] < previousValue[1] && upwardDirection && previousValue[1] > 5)
+		if (distribution[channel][valueIndex] < previousValue[1] && upwardDirection && previousValue[1] > 3)
 		{
 			std::array<float, 2> tmpMaxima = {valueIndex - 1, distribution[channel][valueIndex - 1]};
 			maxima.push_back(tmpMaxima);
 			upwardDirection = false;
 		}
-		else if (distribution[channel][valueIndex] > previousValue[1])
+		else if (distribution[channel][valueIndex] > previousValue[1] && !upwardDirection)
 		{
 			upwardDirection = true;
 		}

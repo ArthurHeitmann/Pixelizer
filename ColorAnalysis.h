@@ -8,13 +8,14 @@ using json = nlohmann::json;
 class ColorAnalysis
 {
 private:
-	CImg<unsigned char> img;
+	CImg<unsigned char> img, cropOriginalImg;
+	
 	/* The image will be scaled down to this resolution, to improve the performance*/
 	int downscaleResolution;
 	/*
 	 * Average saturation and brightness values of the image 
 	 */
-	float avrSat, avrVal;
+	float avrSat, avrVal, avrValScore;
 	/*
 	 * list of all hue maximas; format:
 	 *		{
@@ -22,7 +23,7 @@ private:
 	 *			...
 	 *		}
 	 */
-	std::vector<std::array<float, 2>> maxima;
+	std::vector<std::array<float, 2>> hueMaxima;
 	/*
 	 * sorts the maxima by value, to get most dominant color/hue first
 	 */
@@ -41,6 +42,7 @@ public:
 	 * converts rgb array to hsv array (hue: 0 - 360, sat + val: 0.0 - 1.0)
 	 */
 	std::array<float, 3> rgbToHsv(int* rgbValues);
+	std::array<int, 3> hsvToRgb(float hsv[3]);
 	/*
 	 * returns hue maxima and average saturation and brightnes in a json object
 	 */
