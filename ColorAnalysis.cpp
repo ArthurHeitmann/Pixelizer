@@ -4,6 +4,7 @@
 #include "IntensityDistribution.h"
 #include <iostream>
 #include <map>
+#include "Pixelizer.h"
 
 ColorAnalysis::ColorAnalysis(const char* imgPath, bool autoExecute, int downscalingResolution)
 {
@@ -34,7 +35,7 @@ void ColorAnalysis::analyseImg()
 		for (int x = 0; x < downscaleResolution; x++)
 		{
 			int rgbValue[] = { img(x, y, 0, 0), img(x, y, 0, 1), img(x, y, 0, 2) };
-			hsvValues.emplace_back(rgbToHsv(rgbValue));
+			hsvValues.emplace_back(Pixelizer::rgbToHsv(rgbValue));
 		}
 	}
 	int valueSpan[] = {200, 90};
@@ -86,27 +87,8 @@ json ColorAnalysis::dataSummary()
 	else
 		out["category"] = 0;
 
-	/*
-	for (int x = cropOriginalImg.width() / 2; x < cropOriginalImg.width(); x++)
-	{
-		float tmpHsv[] = { (hueMaxima.size() != 0 ? hueMaxima[0][0] : 0), avrSat, avrVal };
-		std::array<int, 3> rgbVal = hsvToRgb(tmpHsv);
-		for (int y = 0; y < cropOriginalImg.height(); y++)
-		{
-			if (out["category"] == 1) {
-				cropOriginalImg(x, y, 0, 0) = 255;
-				cropOriginalImg(x, y, 0, 1) = 0;
-				cropOriginalImg(x, y, 0, 2) = 0;
-			}
-			else
-			{
-				cropOriginalImg(x, y, 0, 0) = rgbVal[0];
-				cropOriginalImg(x, y, 0, 1) = rgbVal[1];
-				cropOriginalImg(x, y, 0, 2) = rgbVal[2];
-			}
-		}
-	}
-	cropOriginalImg.display();*/
+	out["times_uesed"] = 0;
+	out["used_at"] = json::array();
 
 
 	return out;
@@ -141,110 +123,4 @@ void ColorAnalysis::sortMaxima()
 		newMaxima.push_back({maximaPoint.second, maximaPoint.first});
 	}
 		hueMaxima = newMaxima;
-}
-
-std::array<int, 3> ColorAnalysis::hsvToRgb(float hsv[3])
-{
-	
-	float tmpRgb[3];
-	std::array<int, 3> out;
-	int i;
-	float f, p, q, t;
-
-	if (hsv[1] < 0.01)
-	{
-		out = { (int)(hsv[2] * 255), (int)(hsv[2] * 255), (int)(hsv[2] * 255) };
-		return out;
-	}
-	hsv[0] /= 60;
-	i = hsv[0];
-	f = hsv[0] - i;
-	p = hsv[2] * (1 - hsv[1]);
-	q = hsv[2] * (1 - hsv[1] * f);
-	t = hsv[2] * (1 - hsv[1] * (1 - f));
-
-	switch (i)
-	{
-	case 0:
-		tmpRgb[0] = hsv[2];
-		tmpRgb[1] = t;
-		tmpRgb[2] = p;
-		break;
-	case 1:
-		tmpRgb[0] = q;
-		tmpRgb[1] = hsv[2];
-		tmpRgb[2] = p;
-		break;
-	case 2:
-		tmpRgb[0] = p;
-		tmpRgb[1] = hsv[2];
-		tmpRgb[2] = t;
-		break;
-	case 3:
-		tmpRgb[0] = p;
-		tmpRgb[1] = q;
-		tmpRgb[2] = hsv[2];
-		break;
-	case 4:
-		tmpRgb[0] = t;
-		tmpRgb[1] = p;
-		tmpRgb[2] = hsv[2];
-		break;
-	default:
-		tmpRgb[0] = hsv[2];
-		tmpRgb[1] = p;
-		tmpRgb[2] = q;
-		break;
-	}
-
-	tmpRgb[0] *= 255;
-	tmpRgb[1] *= 255;
-	tmpRgb[2] *= 255;
-
-	out = { (int)round(tmpRgb[0]), (int)round(tmpRgb[1]),(int)round(tmpRgb[2]) };
-
-	return out;
-}
-
-std::array<float, 3> ColorAnalysis::rgbToHsv(int* rgb)
-{
-	//straight from so
-	std::array<float, 3> hsv;
-	int min = rgb[0] < rgb[1] ? rgb[0] : rgb[1];
-	min = min < rgb[2] ? min : rgb[2];
-	int max = rgb[0] > rgb[1] ? rgb[0] : rgb[1];
-	max = max > rgb[2] ? max : rgb[2];
-
-	hsv[2] = (float)max / 255;
-	int delta = max - min;
-	if (delta == 0)
-	{
-		hsv[0] = 0;
-		hsv[1] = 0;
-		return hsv;
-	}
-
-	if (max > 0)
-	{
-		hsv[1] = (float)delta / max;
-	}
-	else
-	{
-		hsv[0] = 0;
-		hsv[1] = 0;
-		return hsv;
-	}
-
-	if (rgb[0] == max)
-		hsv[0] = (float)(rgb[1] - rgb[2]) / delta;
-	else if (rgb[1] == max)
-		hsv[0] = 2 + (float)(rgb[2] - rgb[0]) / delta;
-	else
-		hsv[0] = 4 + (float)(rgb[0] - rgb[1]) / delta;
-
-	hsv[0] *= 60;
-	if (hsv[0] < 0)
-		hsv[0] += 360;
-
-	return hsv;
 }

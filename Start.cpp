@@ -6,39 +6,23 @@
 #include "json.hpp"
 #include <iostream>
 #include <fstream>
-#include "ColorMatcher.h"
+#include "Pixelizer.h"
 
 using json = nlohmann::json;
+using namespace cimg_library;
 
 void generateColorTable(std::string path, int fileCount);
-void analyzeTable();
 
 
 int main() {
-
 	//generateColorTable("img/stock_bmp", 13360);
-	std::ifstream jsonFile("color_table_13360.json");
-	std::string fileContent;
-	if (jsonFile.is_open())
-	{
-		std::string line = "";
-		while (std::getline(jsonFile, line)) {
-			fileContent += line;
-		}
-		jsonFile.close();
-	}
 
-	ColorMatcher matcher(json::parse(fileContent));
-	while (true)
-	{
-		float h, s, v;
-		std::cin >> h;
-		std::cin >> s;
-		std::cin >> v;
-
-		float hsvs[] = { h, s / 100, v / 100 };
-		std::cout << matcher.findImageMatch(hsvs) + 1 << "\n\n";
-	}
+	std::cout << "init: ...";
+	Pixelizer pix("target_5.bmp", "color_table_v1.json", 1, 45, 60, 0.04, 8, 0.085, 0.085);
+	std::cout << "matching...\n";
+	pix.findImageMatches();
+	std::cout << "finalizing\n";
+	pix.createFinalImg();
 
 
 	return 0;
@@ -61,11 +45,9 @@ void generateColorTable(std::string path, int fileCount) {
 
 		colorTable["colorTable"].push_back(ca.dataSummary());
 		colorTable["colorTable"][i - 1]["file_path"] = filePath;
-		colorTable["colorTable"][i - 1]["id"] = i - 1;
-		colorTable["colorTable"][i - 1]["uses"] = 0;
 	}
 	std::ofstream colorTableFile;
-	colorTableFile.open("color_table_13360.json");
+	colorTableFile.open("color_table_v1.json");
 	colorTableFile << colorTable.dump(4);
 	colorTableFile.close();
 }

@@ -41,8 +41,6 @@ public:
 	/*
 	 * converts rgb array to hsv array (hue: 0 - 360, sat + val: 0.0 - 1.0)
 	 */
-	std::array<float, 3> rgbToHsv(int* rgbValues);
-	std::array<int, 3> hsvToRgb(float hsv[3]);
 	/*
 	 * returns hue maxima and average saturation and brightnes in a json object
 	 */
