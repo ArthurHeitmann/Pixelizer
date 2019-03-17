@@ -28,6 +28,8 @@ private:
 	 * sorts the maxima by value, to get most dominant color/hue first
 	 */
 	void sortMaxima();
+
+	float simplifyNumber(float num);
 public:
 	/*
 	 * imgPath: path to image

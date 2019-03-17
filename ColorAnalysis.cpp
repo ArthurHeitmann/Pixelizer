@@ -64,13 +64,13 @@ json ColorAnalysis::dataSummary()
 	
 	if (hueMaxima.size() != 0) {
 		out["max_hue"] = hueMaxima[0][0];
-		out["max_hue_score"] = hueMaxima[0][1];
+		out["max_hue_score"] = simplifyNumber(hueMaxima[0][1]);
 	}
 
-	out["avr_val_score"] = avrValScore;
+	out["avr_val_score"] = simplifyNumber(avrValScore);
 
-	out["avr_sat"] = avrSat;
-	out["avr_val"] = avrVal;
+	out["avr_sat"] = simplifyNumber(avrSat);
+	out["avr_val"] = simplifyNumber(avrVal);
 
 		//extremely low sat or brightnes --> hue cannot be seen anymore
 	
@@ -87,7 +87,7 @@ json ColorAnalysis::dataSummary()
 	else
 		out["category"] = 0;
 
-	out["times_uesed"] = 0;
+	out["times_used"] = 0;
 	out["used_at"] = json::array();
 
 
@@ -123,4 +123,12 @@ void ColorAnalysis::sortMaxima()
 		newMaxima.push_back({maximaPoint.second, maximaPoint.first});
 	}
 		hueMaxima = newMaxima;
+}
+
+float ColorAnalysis::simplifyNumber(float num)
+{
+	if (num < 0.01)
+		return 0;
+
+	return (int)(num * 1000) / 1000.f;
 }

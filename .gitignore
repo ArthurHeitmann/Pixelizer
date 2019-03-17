@@ -9,4 +9,6 @@ color_table_bw.json
 Pixelizer.vcxproj
 Pixelizer.vcxproj.filters
 Pixelizer.vcxproj.user
-target_*.bmp
+targetImgs/*
+results/*
+

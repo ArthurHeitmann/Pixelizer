@@ -19,15 +19,16 @@ class Pixelizer
 {
 private:
 	std::vector<imgData>* colorTable;
-	float greyscaleRange, hueRange, saturationRange, valueRange, noRepeatRange;
-	int pixelImgsResolution;
+	float grayscaleRange, hueRange, saturationRange, valueRange, noRepeatRange;
+	int pixelImgsResolution, maxRecursions;
 	CImg<unsigned char>* targetImg;
 	std::vector<std::vector<std::string>>* pixelImgPaths;
+	const char* resultFile;
 
 	float distanceOnCircle(float val1, float val2);
 	int findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int recursionCount = 0);
 public:
-	Pixelizer(char* targetImgPath, char* colorTablePath, float targetImgScalingFactor, int pixelImgsResolution = 150, float noRepeatRange = 7, float greyscaleRange = 0.06, float hueRange = 5, float saturationRange = 0.07, float valueRange = 0.07);
+	Pixelizer(const char* targetImgPath, const  char* colorTablePath, const  char* resultFile, float targetImgScalingFactor, int pixelImgsResolution = 150, float noRepeatRange = 7, int maxRecursions = 30);
 	~Pixelizer();
 	void findImageMatches();
 	CImg<unsigned char> createFinalImg();

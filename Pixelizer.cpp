@@ -4,14 +4,16 @@
 #include <iostream>
 #include <fstream>
 
-Pixelizer::Pixelizer(char * targetImgPath, char * colorTablePath, float targetImgScalingFactor, int pixelImgsResolution, float noRepeatRange, float greyscaleRange, float hueRange, float saturationRange, float valueRange)
+Pixelizer::Pixelizer(const char* targetImgPath, const  char* colorTablePath, const  char* resultFile, float targetImgScalingFactor, int pixelImgsResolution, float noRepeatRange, int maxRecursions)
 {
+	this->grayscaleRange = 0.02;
+	this->hueRange = 6;
+	this->saturationRange = 0.04;
+	this->valueRange = 0.04;
+	this->resultFile = resultFile;
 	this->noRepeatRange = noRepeatRange;
-	this->greyscaleRange = greyscaleRange;
-	this->hueRange = hueRange;
-	this->saturationRange = saturationRange;
-	this->valueRange = valueRange;
 	this->pixelImgsResolution = pixelImgsResolution;
+	this->maxRecursions = maxRecursions;
 	pixelImgPaths = new std::vector<std::vector<std::string>>;
 
 	targetImg = new CImg<unsigned char>(targetImgPath);
@@ -68,11 +70,11 @@ Pixelizer::~Pixelizer()
 void Pixelizer::findImageMatches()
 {
 	pixelImgPaths->resize(targetImg->height());
-	int prevProgress = -1;
 
-	for (int i = 0; i < 100; i++)
-		std::cout << "|";
-	std::cout << "\n";
+	int prevProgress = -1;
+	bool prevWasHalf = false;
+	std::cout << " [__________________________________________________]";
+	std::cout << "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b";
 
 	for (int y = 0; y < targetImg->height(); y++)
 	{
@@ -81,12 +83,11 @@ void Pixelizer::findImageMatches()
 		{
 			int posXY[2] = { x, y };
 			int tmpRGB[3] = { (*targetImg)(x, y, 0, 0), (*targetImg)(x, y, 0, 1), (*targetImg)(x, y, 0, 2) };
-			//std::string tmpImgPath = (*colorTable)[findImageMatch(rgbToHsv(tmpRGB), posXY)].file_path;
 			(*pixelImgPaths)[y][x] = (*colorTable)[findImageMatch(rgbToHsv(tmpRGB), posXY)].file_path;
-			//std::cout << "found\n";
 			if ((int)((100 * (y * targetImg->width() + x)) / (targetImg->height() * targetImg->width())) > prevProgress)
 			{
-				std::cout << "|";
+				std::cout << (prevWasHalf ? "=" : "-\b");
+				prevWasHalf = !prevWasHalf;
 				prevProgress++;
 			}
 		}
@@ -97,7 +98,12 @@ void Pixelizer::findImageMatches()
 CImg<unsigned char> Pixelizer::createFinalImg()
 {
 	CImg<unsigned char> finalImg(pixelImgsResolution * targetImg->width(), pixelImgsResolution * targetImg->height(), 1, 3, 0);
+
 	int prevProgress = -1;
+	bool prevWasHalf = false;
+	std::cout << " [__________________________________________________]";
+	std::cout << "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b";
+
 	for (int y = 0; y < targetImg->height(); y++)
 	{
 		for (int x = 0; x < targetImg->width(); x++)
@@ -114,14 +120,15 @@ CImg<unsigned char> Pixelizer::createFinalImg()
 
 			if ((int)((100 * (y * targetImg->width() + x)) / (targetImg->height() * targetImg->width())) > prevProgress)
 			{
-				std::cout << "|";
+				std::cout << (prevWasHalf ? "=" : "-\b");
+				prevWasHalf = !prevWasHalf;
 				prevProgress++;
 			}
 		}
 	}
 
 	finalImg.display();
-	finalImg.save("result2.bmp");
+	finalImg.save(resultFile);
 	return finalImg;
 }
 
@@ -136,13 +143,15 @@ int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int 
 		for (int i = 0; i < colorTable->size(); i++)
 		{
 			if ((*colorTable)[i].category == 2 &&
-				abs(hsvPixels[2] - (float)(*colorTable)[i].avr_val) < greyscaleRange &&
+				abs(hsvPixels[2] - (float)(*colorTable)[i].avr_val) < grayscaleRange &&
 				(*colorTable)[i].times_used < 10)
 					closeImgs->insert(std::pair<float, int>((*colorTable)[i].avr_val_score, i));
 		}
 
+		//if images have been found find the best fitting one
 		if (!closeImgs->empty()){
-			if (recursionCount > 5)
+			//stop after too many recursions (the lower maxRecursions is, the faster the matching)
+			if (recursionCount > maxRecursions)
 			{
 				(*colorTable)[closeImgs->begin()->second].times_used += 1;
 				(*colorTable)[closeImgs->begin()->second].used_at.push_back({ posXY[0], posXY[1] });
@@ -151,6 +160,7 @@ int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int 
 				return tmpOut;
 			}
 
+			//evaluate all found images and return the first best image
 			for (std::pair<float, int> valueScore : *closeImgs)
 			{
 				if ((*colorTable)[valueScore.second].times_used == 0)
@@ -162,18 +172,19 @@ int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int 
 					return tmpOut;
 				}
 
-				bool tooClose = false;
-				for (int i = 0; i < (*colorTable)[valueScore.second].times_used; i++)
+				//check for distance to same picture
+				bool imgUsable = (*colorTable)[valueScore.second].times_used < 7;
+				for (int i = 0; i < (*colorTable)[valueScore.second].times_used && imgUsable; i++)
 				{
 					if (sqrt(pow(posXY[0] - (*colorTable)[valueScore.second].used_at[i][0], 2) +
 						pow(posXY[1] - (*colorTable)[valueScore.second].used_at[i][1], 2))
 						<= noRepeatRange)
 					{
-						tooClose = true;
+						imgUsable = false;
 					}
 				}
 
-				if (!tooClose)
+				if (imgUsable)
 				{
 					(*colorTable)[valueScore.second].times_used += 1;
 					(*colorTable)[valueScore.second].used_at.push_back({ posXY[0], posXY[1] });
@@ -185,10 +196,10 @@ int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int 
 		}
 
 		//extend range if no images were found
-		this->greyscaleRange *= 1.5;
+		this->grayscaleRange += 0.01;
 		delete closeImgs;
 		int out = findImageMatch(hsvPixels, posXY, recursionCount + 1);
-		this->greyscaleRange /= 1.5;
+		this->grayscaleRange -= 0.01;
 		return out;
 		
 	}
@@ -210,7 +221,8 @@ int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int 
 		//find image where the target hue appears the most often
 		if (!closeImgs->empty())
 		{
-			if (recursionCount > 5)
+			//stop after too many recursions (the lower maxRecursions is, the faster the matching)
+			if (recursionCount > maxRecursions)
 			{
 				(*colorTable)[closeImgs->begin()->second].times_used += 1;
 				(*colorTable)[closeImgs->begin()->second].used_at.push_back({ posXY[0], posXY[1] });
@@ -219,6 +231,7 @@ int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int 
 				return tmpOut;
 			}
 
+			//evaluate all found images and return the first best image
 			for (std::pair<float, int> hueScore : *closeImgs)
 			{
 				if ((*colorTable)[hueScore.second].times_used == 0)
@@ -230,18 +243,19 @@ int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int 
 					return tmpOut;
 				}
 
-				bool tooClose = false;
-				for (int i = 0; i < (*colorTable)[hueScore.second].times_used; i++)
+				//check for distance to same picture
+				bool imgUsable = (*colorTable)[hueScore.second].times_used < 7;
+				for (int i = 0; i < (*colorTable)[hueScore.second].times_used && imgUsable; i++)
 				{
 					if (sqrt(pow(posXY[0] - (*colorTable)[hueScore.second].used_at[i][0], 2) +
 						pow(posXY[1] - (*colorTable)[hueScore.second].used_at[i][1], 2))
 						<= noRepeatRange)
 					{
-						tooClose = true; //TODO test: break;
+						imgUsable = false;
 					}
 				}
 
-				if (!tooClose)
+				if (imgUsable)
 				{
 					(*colorTable)[hueScore.second].times_used += 1;
 					(*colorTable)[hueScore.second].used_at.push_back({ posXY[0], posXY[1] });
@@ -252,14 +266,16 @@ int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int 
 			}
 
 		}
-		this->hueRange *= 1.5;
-		this->saturationRange *= 1.5;
-		this->valueRange *= 1.5;
+
+		//extend range if no images were found
+		this->hueRange += 6;
+		this->saturationRange += 0.06;
+		this->valueRange += 0.06;
 		delete closeImgs;
 		int out = findImageMatch(hsvPixels, posXY, recursionCount + 1);
-		this->hueRange /= 1.5;
-		this->saturationRange /= 1.5;
-		this->valueRange /= 1.5;
+		this->hueRange -= 6;
+		this->saturationRange -= 0.06;
+		this->valueRange -= 0.06;
 		return out;
 	}
 
