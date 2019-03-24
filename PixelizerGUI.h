@@ -18,7 +18,7 @@ private:
 	void generateColorTable();
 	void executeColorTable(std::string imgCollectionPath, int imgCount,	int startIndex, std::string outPath);
 	void generatePixImage();
-	void executePixImage(std::string targetPath, float scalingFactor, std::string colorTablePath, std::string imgOutName, int pixelResolution, int noRepeatRange, int maxRecursion);
+	void executePixImage(std::string targetPath, float scalingFactor, std::string colorTablePath, std::string imgOutName, int pixelResolution, int noRepeatRange, int maxRecursion, bool useAltAlgo);
 
 	float getImageScaling();
 

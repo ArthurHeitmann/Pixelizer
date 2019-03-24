@@ -24,11 +24,17 @@ private:
 	CImg<unsigned char>* targetImg;
 	std::vector<std::vector<std::string>>* pixelImgPaths;
 	const char* resultFile;
+	bool useAltDistanceAlgo;
+	int divisions;
+	std::vector<std::vector<std::array<int, 2>>>* altCoordsCache;
 
 	float distanceOnCircle(float val1, float val2);
-	int findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int recursionCount = 0);
+	int findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int recursionCount = 1);
+	bool imgWithingHSVRange(std::array<float, 3> hsvTarget, std::array<float, 3> hsvComp, int rangeExtender, bool isInThinHueRange);
+	std::array<int, 2> getAlternativeCoodrdinates(int* posXY);
+	std::array<int, 2> getAlternativeCoodrdinates(std::array<int, 2> posXY);
 public:
-	Pixelizer(const char* targetImgPath, const  char* colorTablePath, const  char* resultFile, float targetImgScalingFactor, int pixelImgsResolution = 150, float noRepeatRange = 7, int maxRecursions = 30);
+	Pixelizer(const char* targetImgPath, const  char* colorTablePath, const  char* resultFile, float targetImgScalingFactor, int pixelImgsResolution = 150, float noRepeatRange = 7, int maxRecursions = 30, bool fastDistance = false);
 	~Pixelizer();
 	void findImageMatches();
 	CImg<unsigned char> createFinalImg();

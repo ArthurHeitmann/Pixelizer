@@ -147,7 +147,7 @@ void PixelizerGUI::executeColorTable(std::string imgCollectionPath, int imgCount
 void PixelizerGUI::generatePixImage()
 {
 	bool done = false;
-	std::string targetPath = "target_0.bmp";
+	std::string targetPath = "targetImgs/target_7.bmp";
 	try
 	{
 		targetImg = CImg<unsigned char>(targetPath.c_str());
@@ -159,9 +159,10 @@ void PixelizerGUI::generatePixImage()
 	float scalingFactor = 1;
 	std::string colorTablePath = "color_table_v1.json";
 	std::string imgOutName = "result_tmp.bmp";
-	int pixelResolution = 50;
-	int noRepeatRange = 10;
-	int maxRecursion = 30;
+	int pixelResolution = 75;
+	int noRepeatRange = 15;
+	int maxRecursion = 15;
+	bool useAltAlgo = false;
 	bool canStart = false;
 	
 	while (!done)
@@ -185,87 +186,97 @@ void PixelizerGUI::generatePixImage()
 		printOptionLine(5, "Small images resolution", pixelResolution, 3);
 		printOptionLine(6, "Avoid duplicates in range", noRepeatRange, 3);
 		printOptionLine(7, "Maximum recursion depth", maxRecursion, 3);
+		printOptionLine(8, "UseAlternative distance alogrithm", useAltAlgo, 2);
 		printOptionLine(0, "Exit", "", 0);
 		printLine();
 		if (!targetPath.empty() && scalingFactor > 0 && !colorTablePath.empty() && !imgOutName.empty() && pixelResolution > 0) {
 			canStart = true;
-			printOptionLine(8, "Start", "", 0);
+			printOptionLine(9, "Start", "", 0);
 		}
 		printLine();
 		printLine();
 		print(" Input: ");
-		switch (getIntegerInput())
+		try
 		{
-		case 0:
-			exit(0);
-		case 1:
-			printLine();
-			print(" Template image path: ");
-			targetPath = getTextInput();
-			try
+			switch (getIntegerInput())
 			{
+			case 0:
+				exit(0);
+			case 1:
+				printLine();
+				print(" Template image path: ");
+				targetPath = getTextInput();
 				targetImg = CImg<unsigned char>(targetPath.c_str());
-			}
-			catch (const std::exception&)
-			{
-				targetPath = "";
-				print("Couldn't find file. Try again: ");
-				Sleep(3000);
-			}
-			break;
-		case 2:
-			printLine();
-			print(" Image count: ");
-			scalingFactor = getImageScaling();
-			break;
-		case 3:
-			printLine();
-			print("Output path: ");
-			imgOutName = getTextInput();
-			break;
-		case 4:
-			printLine();
-			print(" Path to color table: ");
-			colorTablePath = getTextInput();
-			break;
-		case 5:
-			printLine();
-			print(" Pixel images resolution: ");
-			pixelResolution = getIntegerInput();
-			break;
-		case 6:
-			printLine();
-			print(" No repeat range: ");
-			noRepeatRange = getIntegerInput();
-			break;
-		case 7:
-			printLine();
-			print(" Maximum recursion: ");
-			maxRecursion = getIntegerInput();
-			break;
-		case 8:
-			if (canStart) {
-				done = true;
-				executePixImage(targetPath, scalingFactor, colorTablePath, imgOutName, pixelResolution, noRepeatRange, maxRecursion);
+				break;
+			case 2:
+				printLine();
+				print(" Image count: ");
+				scalingFactor = getImageScaling();
+				break;
+			case 3:
+				printLine();
+				print("Output path: ");
+				imgOutName = getTextInput();
+				/*if (imgOutName.find(".bmp") == imgOutName.size() - 4)
+					throw "File has to end with \".bmp\"";*/
+				break;
+			case 4:
+				printLine();
+				print(" Path to color table: ");
+				colorTablePath = getTextInput();
+				break;
+			case 5:
+				printLine();
+				print(" Pixel images resolution: ");
+				pixelResolution = getIntegerInput();
+				break;
+			case 6:
+				printLine();
+				print(" No repeat range: ");
+				noRepeatRange = getIntegerInput();
+				break;
+			case 7:
+				printLine();
+				print(" Maximum recursion: ");
+				maxRecursion = getIntegerInput();
+				break;
+			case 8:
+				printLine();
+				print(" Use alt algo (1: yes 0: no): ");
+				useAltAlgo = getIntegerInput();
+				break;
+			case 9:
+				if (canStart) {
+					done = true;
+					executePixImage(targetPath, scalingFactor, colorTablePath, imgOutName, pixelResolution, noRepeatRange, maxRecursion, useAltAlgo);
+					break;
+				}
+				else
+					break;
+			default:
 				break;
 			}
-			else
-				break;
-		default:
-			break;
+		}
+		catch (const std::exception& e)
+		{
+			print("Invalid input. Please try again (");
+			print(e.what());
+			print(")");
+			Sleep(6000);
 		}
 	}
 }
 
-void PixelizerGUI::executePixImage(std::string targetPath, float scalingFactor, std::string colorTablePath, std::string imgOutName, int pixelResolution, int noRepeatRange, int maxRecursion)
+void PixelizerGUI::executePixImage(std::string targetPath, float scalingFactor, std::string colorTablePath, std::string imgOutName, int pixelResolution, int noRepeatRange, int maxRecursion, bool useAltAlgo)
 {
 	clear();
 	printLine();
 	print(" init:...");
-	Pixelizer pix(targetPath.c_str(), colorTablePath.c_str(), imgOutName.c_str(), scalingFactor, pixelResolution, noRepeatRange, maxRecursion);
+	Pixelizer pix(targetPath.c_str(), colorTablePath.c_str(), imgOutName.c_str(), scalingFactor, pixelResolution, noRepeatRange, maxRecursion, useAltAlgo);
 	printLine();
 	print(" matching...", true);
 	pix.findImageMatches();
+	std::cout << "\a";
 	printLine();
 	print(" finalizing...", true);
 	pix.createFinalImg();

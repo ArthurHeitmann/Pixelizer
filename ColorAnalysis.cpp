@@ -64,17 +64,17 @@ json ColorAnalysis::dataSummary()
 	
 	if (hueMaxima.size() != 0) {
 		out["max_hue"] = hueMaxima[0][0];
-		out["max_hue_score"] = simplifyNumber(hueMaxima[0][1]);
+		out["max_hue_score"] = hueMaxima[0][1];
 	}
 
-	out["avr_val_score"] = simplifyNumber(avrValScore);
+	out["avr_val_score"] = avrValScore;
 
-	out["avr_sat"] = simplifyNumber(avrSat);
-	out["avr_val"] = simplifyNumber(avrVal);
+	out["avr_sat"] = avrSat;
+	out["avr_val"] = avrVal;
 
 		//extremely low sat or brightnes --> hue cannot be seen anymore
 	
-	if (avrSat < 0.09 || avrVal < 0.06 || hueMaxima.size() == 0)				//grayscale
+	if (avrSat < 0.06 || avrVal < 0.04 || hueMaxima.size() == 0)				//grayscale
 		out["category"] = 2;
 	else if (hueMaxima.size() == 1)
 		out["category"] = 0;

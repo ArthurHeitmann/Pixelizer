@@ -48,6 +48,9 @@ public:
 	 */
 	json dataSummary();
 
+	/**
+		Returns minimal distance in degrees on a circle, from 2 given angles
+	*/
 	int colorCircleDistance(int hue1, int hue2);
 };
 
