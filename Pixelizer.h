@@ -4,8 +4,8 @@
 #include <vector>
 #include <array>
 #include <string>
+#include <mutex>
 
-using json = nlohmann::json;
 using namespace cimg_library;
 
 struct imgData {
@@ -19,6 +19,7 @@ class Pixelizer
 {
 private:
 	std::vector<imgData>* colorTable;
+	std::vector<std::mutex>* locks;
 	float grayscaleRange, hueRange, saturationRange, valueRange, noRepeatRange;
 	int pixelImgsResolution, maxRecursions;
 	CImg<unsigned char>* targetImg;
@@ -26,15 +27,21 @@ private:
 	const char* resultFile;
 	bool useAltDistanceAlgo;
 	int divisions;
+	int threads, threadsDone;
+	std::mutex tsDoneLock;
 	std::vector<std::vector<std::array<int, 2>>>* altCoordsCache;
+	float matchingProgressPercent;
+	std::mutex progressLock;
 
+	void findImageMatchesThreadded(int startX, int endX);
+	void matchingProgressThread();
 	float distanceOnCircle(float val1, float val2);
 	int findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int recursionCount = 1);
 	bool imgWithingHSVRange(std::array<float, 3> hsvTarget, std::array<float, 3> hsvComp, int rangeExtender, bool isInThinHueRange);
 	std::array<int, 2> getAlternativeCoodrdinates(int* posXY);
 	std::array<int, 2> getAlternativeCoodrdinates(std::array<int, 2> posXY);
 public:
-	Pixelizer(const char* targetImgPath, const  char* colorTablePath, const  char* resultFile, float targetImgScalingFactor, int pixelImgsResolution = 150, float noRepeatRange = 7, int maxRecursions = 30, bool fastDistance = false);
+	Pixelizer(const char* targetImgPath, const  char* colorTablePath, const  char* resultFile, float targetImgScalingFactor, int threads = 8, int pixelImgsResolution = 150, float noRepeatRange = 7, int maxRecursions = 30, bool fastDistance = false);
 	~Pixelizer();
 	void findImageMatches();
 	CImg<unsigned char> createFinalImg();

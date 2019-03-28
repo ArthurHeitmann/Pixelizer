@@ -164,6 +164,7 @@ void PixelizerGUI::generatePixImage()
 	int maxRecursion = 15;
 	bool useAltAlgo = false;
 	bool canStart = false;
+	int threads = 8;
 	
 	while (!done)
 	{
@@ -187,12 +188,15 @@ void PixelizerGUI::generatePixImage()
 		printOptionLine(6, "Avoid duplicates in range", noRepeatRange, 3);
 		printOptionLine(7, "Maximum recursion depth", maxRecursion, 3);
 		printOptionLine(8, "UseAlternative distance alogrithm", useAltAlgo, 2);
+		printOptionLine(9, "Threads", threads, 5);
 		printOptionLine(0, "Exit", "", 0);
 		printLine();
-		if (!targetPath.empty() && scalingFactor > 0 && !colorTablePath.empty() && !imgOutName.empty() && pixelResolution > 0) {
+		if (!targetPath.empty() && scalingFactor > 0 && !colorTablePath.empty() && !imgOutName.empty() && pixelResolution > 0 && noRepeatRange >= 0 && maxRecursion >= 0 && threads > 0) {
 			canStart = true;
-			printOptionLine(9, "Start", "", 0);
+			printOptionLine(10, "Start", "", 0);
 		}
+		else
+			canStart = false;
 		printLine();
 		printLine();
 		print(" Input: ");
@@ -217,8 +221,8 @@ void PixelizerGUI::generatePixImage()
 				printLine();
 				print("Output path: ");
 				imgOutName = getTextInput();
-				/*if (imgOutName.find(".bmp") == imgOutName.size() - 4)
-					throw "File has to end with \".bmp\"";*/
+				if (imgOutName.find(".bmp") == imgOutName.size() - 4)
+					throw std::exception("invalid file name (has to end with .bmp)");
 				break;
 			case 4:
 				printLine();
@@ -246,9 +250,14 @@ void PixelizerGUI::generatePixImage()
 				useAltAlgo = getIntegerInput();
 				break;
 			case 9:
+				printLine();
+				print(" Threads: ");
+				threads = getIntegerInput();
+				break;
+			case 10:
 				if (canStart) {
 					done = true;
-					executePixImage(targetPath, scalingFactor, colorTablePath, imgOutName, pixelResolution, noRepeatRange, maxRecursion, useAltAlgo);
+					executePixImage(targetPath, scalingFactor, colorTablePath, imgOutName, pixelResolution, noRepeatRange, maxRecursion, useAltAlgo, threads);
 					break;
 				}
 				else
@@ -267,12 +276,12 @@ void PixelizerGUI::generatePixImage()
 	}
 }
 
-void PixelizerGUI::executePixImage(std::string targetPath, float scalingFactor, std::string colorTablePath, std::string imgOutName, int pixelResolution, int noRepeatRange, int maxRecursion, bool useAltAlgo)
+void PixelizerGUI::executePixImage(std::string targetPath, float scalingFactor, std::string colorTablePath, std::string imgOutName, int pixelResolution, int noRepeatRange, int maxRecursion, bool useAltAlgo, int threads)
 {
 	clear();
 	printLine();
 	print(" init:...");
-	Pixelizer pix(targetPath.c_str(), colorTablePath.c_str(), imgOutName.c_str(), scalingFactor, pixelResolution, noRepeatRange, maxRecursion, useAltAlgo);
+	Pixelizer pix(targetPath.c_str(), colorTablePath.c_str(), imgOutName.c_str(), scalingFactor, threads, pixelResolution, noRepeatRange, maxRecursion, useAltAlgo);
 	printLine();
 	print(" matching...", true);
 	pix.findImageMatches();

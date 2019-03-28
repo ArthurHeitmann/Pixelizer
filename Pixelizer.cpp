@@ -3,8 +3,9 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
+#include <thread>
 
-Pixelizer::Pixelizer(const char* targetImgPath, const  char* colorTablePath, const  char* resultFile, float targetImgScalingFactor, int pixelImgsResolution, float noRepeatRange, int maxRecursions, bool altDistance)
+Pixelizer::Pixelizer(const char* targetImgPath, const  char* colorTablePath, const  char* resultFile, float targetImgScalingFactor, int threads, int pixelImgsResolution, float noRepeatRange, int maxRecursions, bool altDistance)
 {
 	this->grayscaleRange = 0.02;
 	this->hueRange = 5;
@@ -15,6 +16,7 @@ Pixelizer::Pixelizer(const char* targetImgPath, const  char* colorTablePath, con
 	this->pixelImgsResolution = pixelImgsResolution;
 	this->maxRecursions = maxRecursions;
 	this->useAltDistanceAlgo = altDistance;
+	this->threads = threads;
 	pixelImgPaths = new std::vector<std::vector<std::string>>;
 
 	targetImg = new CImg<unsigned char>(targetImgPath);
@@ -48,7 +50,7 @@ Pixelizer::Pixelizer(const char* targetImgPath, const  char* colorTablePath, con
 
 	std::cout << "parsing json...";
 	colorTable = new std::vector<imgData>;
-	json tmpJson = json::parse(fileContent);
+	nlohmann::json tmpJson = nlohmann::json::parse(fileContent);
 	for (int i = 0; i < tmpJson["colorTable"].size(); i++)
 	{
 		if (tmpJson["colorTable"][i]["category"] == 1)
@@ -72,6 +74,7 @@ Pixelizer::Pixelizer(const char* targetImgPath, const  char* colorTablePath, con
 
 		colorTable->push_back(tmpData);
 	}
+	locks = new std::vector<std::mutex>(colorTable->size());
 	std::cout << std::endl;
 }
  
@@ -87,8 +90,27 @@ Pixelizer::~Pixelizer()
 void Pixelizer::findImageMatches()
 {
 	pixelImgPaths->resize(targetImg->height());
+	for (int y = 0; y < targetImg->height(); y++)
+		(*pixelImgPaths)[y].resize(targetImg->width());
+	
+	matchingProgressPercent = 0;
+	threadsDone = 0;
 
-	int prevProgress = -1;
+	std::vector<std::thread> ts(threads);
+	int threadWidths = targetImg->width() / threads;
+
+	std::thread progressT(&Pixelizer::matchingProgressThread, this);
+	for (int i = 0; i < threads - 1; i++)
+	{
+		ts[i] = std::thread(&Pixelizer::findImageMatchesThreadded, this, threadWidths * i, threadWidths * (i + 1));
+	}
+	ts[threads - 1] = std::thread(&Pixelizer::findImageMatchesThreadded, this, threadWidths * (threads - 1), targetImg->width());
+	for (int i = 0; i < threads; i++)
+	{
+		ts[i].join();
+	}
+	progressT.join();
+	/*int prevProgress = -1;
 	bool prevWasHalf = false;
 	std::cout << " [__________________________________________________]";
 	std::cout << "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b";
@@ -108,8 +130,60 @@ void Pixelizer::findImageMatches()
 				prevProgress++;
 			}
 		}
-	}
+	}*/
 	std::cout << std::endl;
+}
+
+void Pixelizer::findImageMatchesThreadded(int startX, int endX)
+{
+	float prevProgress = 0;
+	int totalPixels = targetImg->height() * targetImg->width();
+	for (int y = 0; y < targetImg->height(); y++)
+	{
+		if (y % 2 == 0)
+		{
+			float newProgress = (100 * y * (endX - startX)) / totalPixels;
+			progressLock.lock();
+			matchingProgressPercent += newProgress - prevProgress;
+			progressLock.unlock();
+			prevProgress = newProgress;
+		}
+		for (int x = startX; x < endX; x++)
+		{
+			int posXY[2] = { x, y };
+			int tmpRGB[3] = { (*targetImg)(x, y, 0, 0), (*targetImg)(x, y, 0, 1), (*targetImg)(x, y, 0, 2) };
+			(*pixelImgPaths)[y][x] = (*colorTable)[findImageMatch(rgbToHsv(tmpRGB), posXY)].file_path;
+		}
+		
+	}
+	float newProgress = (100 * targetImg->height() * (endX - startX)) / totalPixels;
+	progressLock.lock();
+	matchingProgressPercent += newProgress - prevProgress;
+	progressLock.unlock();
+
+	tsDoneLock.lock();
+	threadsDone++;
+	tsDoneLock.unlock();
+}
+
+void Pixelizer::matchingProgressThread()
+{
+	float prevProgress = 0;
+	std::cout << " [__________________________________________________]";
+	std::cout << "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b";
+
+	while (threads != threadsDone)
+	{
+		Sleep(250);
+		if ((int) matchingProgressPercent > (int) prevProgress) {
+			progressLock.lock();
+			float progDiff = matchingProgressPercent - prevProgress;
+			for (int i = 0; i < progDiff; i++)
+				std::cout << ((int) (matchingProgressPercent - (progDiff - 1 - i)) % 2 == 0 ? "=" : "-\b");
+			prevProgress = matchingProgressPercent;
+			progressLock.unlock();
+		}
+	}
 }
 
 CImg<unsigned char> Pixelizer::createFinalImg()
@@ -151,8 +225,8 @@ CImg<unsigned char> Pixelizer::createFinalImg()
 
 int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int recursionCount)
 {
-	if (posXY[0] == 102 && posXY[1] == 4)
-		std::cout << "";
+//	if (posXY[0] == 102 && posXY[1] == 4)
+//		std::cout << "";
 	std::map<float, int, std::greater<float>>* closeImgs = new std::map<float, int, std::greater<float>>;
 
 	//grayscale
@@ -172,11 +246,13 @@ int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int 
 			//stop after too many recursions (the lower maxRecursions is, the faster the matching)
 			if (recursionCount > maxRecursions)
 			{
+				(*locks)[closeImgs->begin()->second].lock();
 				(*colorTable)[closeImgs->begin()->second].times_used += 1;
 				if (useAltDistanceAlgo)
 					(*colorTable)[closeImgs->begin()->second].used_at.push_back(getAlternativeCoodrdinates(posXY));
 				else
 					(*colorTable)[closeImgs->begin()->second].used_at.push_back({ posXY[0], posXY[1] });
+				(*locks)[closeImgs->begin()->second].unlock();
 				int tmpOut = closeImgs->begin()->second;
 				delete closeImgs;
 				return tmpOut;
@@ -187,11 +263,13 @@ int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int 
 			{
 				if ((*colorTable)[valueScore.second].times_used == 0)
 				{
+					(*locks)[valueScore.second].lock();
 					(*colorTable)[valueScore.second].times_used += 1;
 					if (useAltDistanceAlgo)
 						(*colorTable)[valueScore.second].used_at.push_back(getAlternativeCoodrdinates(posXY));
 					else
 						(*colorTable)[valueScore.second].used_at.push_back({ posXY[0], posXY[1] });
+					(*locks)[valueScore.second].unlock();
 					int tmpOut = valueScore.second;
 					delete closeImgs;
 					return tmpOut;
@@ -223,11 +301,13 @@ int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int 
 
 				if (imgUsable)
 				{
+					(*locks)[valueScore.second].lock();
 					(*colorTable)[valueScore.second].times_used += 1;
 					if (useAltDistanceAlgo)
 						(*colorTable)[valueScore.second].used_at.push_back((*altCoordsCache)[posXY[1]][posXY[0]]);
 					else
 						(*colorTable)[valueScore.second].used_at.push_back({ posXY[0], posXY[1] });
+					(*locks)[valueScore.second].unlock();
 					int tmpOut = valueScore.second;
 					delete closeImgs;
 					return tmpOut;
@@ -283,7 +363,7 @@ int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int 
 
 			if (isInThinHueRange)
 			{
-				if (distanceOnCircle(hsvPixels[0], (*colorTable)[i].max_hue) < hueRange * recursionCount * 0.75)
+				if (distanceOnCircle(hsvPixels[0], (*colorTable)[i].max_hue) < hueRange * recursionCount * 0.6)
 					closeImgs->insert(std::pair<float, int>((*colorTable)[i].max_hue_score, i));
 				else
 					continue;
@@ -312,11 +392,13 @@ int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int 
 			//stop after too many recursions (the lower maxRecursions is, the faster the matching)
 			if (recursionCount > maxRecursions)
 			{
+				(*locks)[closeImgs->begin()->second].lock();
 				(*colorTable)[closeImgs->begin()->second].times_used += 1;
 				if (useAltDistanceAlgo)
 					(*colorTable)[closeImgs->begin()->second].used_at.push_back(getAlternativeCoodrdinates(posXY));
 				else
 					(*colorTable)[closeImgs->begin()->second].used_at.push_back({ posXY[0], posXY[1] });
+				(*locks)[closeImgs->begin()->second].unlock();
 				int tmpOut = closeImgs->begin()->second;
 				delete closeImgs;
 				return tmpOut;
@@ -327,11 +409,13 @@ int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int 
 			{
 				if ((*colorTable)[hueScore.second].times_used == 0)
 				{
+					(*locks)[hueScore.second].lock();
 					(*colorTable)[hueScore.second].times_used += 1;
 					if (useAltDistanceAlgo)
 						(*colorTable)[hueScore.second].used_at.push_back(getAlternativeCoodrdinates(posXY));
 					else
 						(*colorTable)[hueScore.second].used_at.push_back({ posXY[0], posXY[1] });
+					(*locks)[hueScore.second].unlock();
 					int tmpOut = hueScore.second;
 					delete closeImgs;
 					return tmpOut;
@@ -363,11 +447,13 @@ int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int 
 				}
 				if (imgUsable)
 				{
+					(*locks)[hueScore.second].lock();
 					(*colorTable)[hueScore.second].times_used += 1;
 					if (useAltDistanceAlgo)
 						(*colorTable)[hueScore.second].used_at.push_back((*altCoordsCache)[posXY[1]][posXY[0]]);
 					else
 						(*colorTable)[hueScore.second].used_at.push_back({ posXY[0], posXY[1] });
+					(*locks)[hueScore.second].unlock();
 					int tmpOut = hueScore.second;
 					delete closeImgs;
 					return tmpOut;

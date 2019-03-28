@@ -8,7 +8,6 @@
 #include "Pixelizer.h"
 #include "PixelizerGUI.h"
 
-using json = nlohmann::json;
 using namespace cimg_library;
 
 void generateColorTable(std::string path, int fileCount);
@@ -38,6 +37,7 @@ int main() {
 }
 
 void generateColorTable(std::string path, int fileCount) {
+	using json = nlohmann::json;
 	json colorTable;
 	colorTable["colorTable"] = json::array();
 

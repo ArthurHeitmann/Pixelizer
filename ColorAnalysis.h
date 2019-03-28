@@ -3,7 +3,7 @@
 #include "json.hpp"
 
 using namespace cimg_library;
-using json = nlohmann::json;
+using json = nlohmann::basic_json<std::map, std::vector, std::string, bool, std::int64_t, std::uint64_t, float>;
 
 class ColorAnalysis
 {
