@@ -74,7 +74,7 @@ json ColorAnalysis::dataSummary()
 
 		//extremely low sat or brightnes --> hue cannot be seen anymore
 	
-	if (avrSat < 0.06 || avrVal < 0.04 || hueMaxima.size() == 0)				//grayscale
+	if (avrSat < 0.035 || avrVal < 0.04 || hueMaxima.size() == 0)				//grayscale
 		out["category"] = 2;
 	else if (hueMaxima.size() == 1)
 		out["category"] = 0;

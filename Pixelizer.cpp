@@ -4,8 +4,10 @@
 #include <iostream>
 #include <fstream>
 #include <thread>
+#include <ctime>
+#include <cstdlib>
 
-Pixelizer::Pixelizer(const char* targetImgPath, const  char* colorTablePath, const  char* resultFile, float targetImgScalingFactor, int threads, int pixelImgsResolution, float noRepeatRange, int maxRecursions, bool altDistance)
+Pixelizer::Pixelizer(const char* targetImgPath, const  char* colorTablePath, const  char* resultFile, float targetImgScalingFactor, int threads, int pixelImgsResolution, float noRepeatRange, int maxExtensions, bool altDistance)
 {
 	this->grayscaleRange = 0.02;
 	this->hueRange = 5;
@@ -14,7 +16,7 @@ Pixelizer::Pixelizer(const char* targetImgPath, const  char* colorTablePath, con
 	this->resultFile = resultFile;
 	this->noRepeatRange = noRepeatRange * noRepeatRange;
 	this->pixelImgsResolution = pixelImgsResolution;
-	this->maxRecursions = maxRecursions;
+	this->maxExtensions = maxExtensions;
 	this->useAltDistanceAlgo = altDistance;
 	this->threads = threads;
 	pixelImgPaths = new std::vector<std::vector<std::string>>;
@@ -89,6 +91,7 @@ Pixelizer::~Pixelizer()
 
 void Pixelizer::findImageMatches()
 {
+	srand(time(NULL));
 	pixelImgPaths->resize(targetImg->height());
 	for (int y = 0; y < targetImg->height(); y++)
 		(*pixelImgPaths)[y].resize(targetImg->width());
@@ -137,15 +140,17 @@ void Pixelizer::findImageMatches()
 void Pixelizer::findImageMatchesThreadded(int startX, int endX)
 {
 	float prevProgress = 0;
+	float total = 0;
 	int totalPixels = targetImg->height() * targetImg->width();
 	for (int y = 0; y < targetImg->height(); y++)
 	{
 		if (y % 2 == 0)
 		{
-			float newProgress = (100 * y * (endX - startX)) / totalPixels;
+			float newProgress = (100.f * y * (endX - startX)) / totalPixels;
 			progressLock.lock();
 			matchingProgressPercent += newProgress - prevProgress;
 			progressLock.unlock();
+			total += newProgress - prevProgress;
 			prevProgress = newProgress;
 		}
 		for (int x = startX; x < endX; x++)
@@ -156,7 +161,7 @@ void Pixelizer::findImageMatchesThreadded(int startX, int endX)
 		}
 		
 	}
-	float newProgress = (100 * targetImg->height() * (endX - startX)) / totalPixels;
+	float newProgress = (100.f * targetImg->height() * (endX - startX)) / totalPixels;
 	progressLock.lock();
 	matchingProgressPercent += newProgress - prevProgress;
 	progressLock.unlock();
@@ -172,12 +177,12 @@ void Pixelizer::matchingProgressThread()
 	std::cout << " [__________________________________________________]";
 	std::cout << "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b";
 
-	while (threads != threadsDone)
+	while (threadsDone != threads)
 	{
 		Sleep(250);
 		if ((int) matchingProgressPercent > (int) prevProgress) {
 			progressLock.lock();
-			float progDiff = matchingProgressPercent - prevProgress;
+			float progDiff = (int) matchingProgressPercent - (int) prevProgress;
 			for (int i = 0; i < progDiff; i++)
 				std::cout << ((int) (matchingProgressPercent - (progDiff - 1 - i)) % 2 == 0 ? "=" : "-\b");
 			prevProgress = matchingProgressPercent;
@@ -223,145 +228,175 @@ CImg<unsigned char> Pixelizer::createFinalImg()
 	return finalImg;
 }
 
-int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int recursionCount)
+int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2])
 {
-//	if (posXY[0] == 102 && posXY[1] == 4)
-//		std::cout << "";
-	std::map<float, int, std::greater<float>>* closeImgs = new std::map<float, int, std::greater<float>>;
+	std::vector<std::map<float, int, std::greater<float>>>* closeImgs = new std::vector<std::map<float, int, std::greater<float>>>(maxExtensions + 1);
 
 	//grayscale
-	if (hsvPixels[1] < 0.09 || hsvPixels[2] < 0.04)
+	if (hsvPixels[1] < 0.035 || hsvPixels[2] < 0.04)
 	{
 		//find all images withing range
 		for (int i = 0; i < colorTable->size(); i++)
 		{
-			if ((*colorTable)[i].category == 2 &&
-				abs(hsvPixels[2] - (float)(*colorTable)[i].avr_val) < grayscaleRange &&
-				(*colorTable)[i].times_used < 10)
-					closeImgs->insert(std::pair<float, int>((*colorTable)[i].avr_val_score, i));
+			if ((*colorTable)[i].category != 2)
+				continue;
+			int extensionsNeeded = abs(hsvPixels[2] - (*colorTable)[i].avr_val) / grayscaleRange;
+			if (extensionsNeeded <= maxExtensions)
+				(*closeImgs)[extensionsNeeded].insert(std::pair<float, int>((*colorTable)[i].avr_val_score, i));
 		}
 
 		//if images have been found find the best fitting one
 		if (!closeImgs->empty()){
-			//stop after too many recursions (the lower maxRecursions is, the faster the matching)
-			if (recursionCount > maxRecursions)
-			{
-				(*locks)[closeImgs->begin()->second].lock();
-				(*colorTable)[closeImgs->begin()->second].times_used += 1;
-				if (useAltDistanceAlgo)
-					(*colorTable)[closeImgs->begin()->second].used_at.push_back(getAlternativeCoodrdinates(posXY));
-				else
-					(*colorTable)[closeImgs->begin()->second].used_at.push_back({ posXY[0], posXY[1] });
-				(*locks)[closeImgs->begin()->second].unlock();
-				int tmpOut = closeImgs->begin()->second;
-				delete closeImgs;
-				return tmpOut;
-			}
 
 			//evaluate all found images and return the first best image
-			for (std::pair<float, int> valueScore : *closeImgs)
+			for (int extDepth = 0; extDepth < closeImgs->size(); extDepth++)
 			{
-				if ((*colorTable)[valueScore.second].times_used == 0)
+				std::map<float, int, std::greater<float>> possibleImgs;
+				for (std::pair<float, int> valueScore : (*closeImgs)[extDepth])
 				{
-					(*locks)[valueScore.second].lock();
-					(*colorTable)[valueScore.second].times_used += 1;
-					if (useAltDistanceAlgo)
-						(*colorTable)[valueScore.second].used_at.push_back(getAlternativeCoodrdinates(posXY));
-					else
-						(*colorTable)[valueScore.second].used_at.push_back({ posXY[0], posXY[1] });
-					(*locks)[valueScore.second].unlock();
-					int tmpOut = valueScore.second;
-					delete closeImgs;
-					return tmpOut;
-				}
-
-				//check for distance to same picture
-				bool imgUsable = true;
-				//bool imgUsable = (*colorTable)[valueScore.second].times_used < 7;
-				for (int i = 0; i < (*colorTable)[valueScore.second].times_used && imgUsable; i++)
-				{
-					if (useAltDistanceAlgo)
+					if ((*colorTable)[valueScore.second].times_used == 0)
 					{
-						if (abs((*altCoordsCache)[posXY[1]][posXY[0]][0] - (*colorTable)[valueScore.second].used_at[i][0]) <= 1 &&
-							abs((*altCoordsCache)[posXY[1]][posXY[0]][1] - (*colorTable)[valueScore.second].used_at[i][1]) <= 1)
+						(*locks)[valueScore.second].lock();
+						(*colorTable)[valueScore.second].times_used += 1;
+						if (useAltDistanceAlgo)
+							(*colorTable)[valueScore.second].used_at.push_back(getAlternativeCoodrdinates(posXY));
+						else
+							(*colorTable)[valueScore.second].used_at.push_back({ posXY[0], posXY[1] });
+						(*locks)[valueScore.second].unlock();
+						int tmpOut = valueScore.second;
+						delete closeImgs;
+						return tmpOut;
+					}
+
+					//check for distance to same picture
+					bool imgUsable = true;
+					//bool imgUsable = (*colorTable)[valueScore.second].times_used < 7;
+					for (int i = 0; i < (*colorTable)[valueScore.second].times_used && imgUsable; i++)
+					{
+						if (useAltDistanceAlgo)
 						{
-							imgUsable = false;
+							if (abs((*altCoordsCache)[posXY[1]][posXY[0]][0] - (*colorTable)[valueScore.second].used_at[i][0]) <= 1 &&
+								abs((*altCoordsCache)[posXY[1]][posXY[0]][1] - (*colorTable)[valueScore.second].used_at[i][1]) <= 1)
+							{
+								imgUsable = false;
+							}
+						}
+						else
+						{
+							if (pow(posXY[0] - (*colorTable)[valueScore.second].used_at[i][0], 2) +
+								pow(posXY[1] - (*colorTable)[valueScore.second].used_at[i][1], 2)
+								<= noRepeatRange)
+							{
+								imgUsable = false;
+							}
 						}
 					}
-					else
+
+					if (imgUsable)
 					{
-						if (pow(posXY[0] - (*colorTable)[valueScore.second].used_at[i][0], 2) +
-							pow(posXY[1] - (*colorTable)[valueScore.second].used_at[i][1], 2)
-							<= noRepeatRange)
-						{
-							imgUsable = false;
-						}
+						possibleImgs.insert(valueScore);
 					}
 				}
 
-				if (imgUsable)
+				if (!possibleImgs.empty())
 				{
-					(*locks)[valueScore.second].lock();
-					(*colorTable)[valueScore.second].times_used += 1;
-					if (useAltDistanceAlgo)
-						(*colorTable)[valueScore.second].used_at.push_back((*altCoordsCache)[posXY[1]][posXY[0]]);
-					else
-						(*colorTable)[valueScore.second].used_at.push_back({ posXY[0], posXY[1] });
-					(*locks)[valueScore.second].unlock();
-					int tmpOut = valueScore.second;
 					delete closeImgs;
-					return tmpOut;
+					int outId = randomTopImgId(possibleImgs);
+					(*locks)[outId].lock();
+					(*colorTable)[outId].times_used += 1;
+					if (useAltDistanceAlgo)
+						(*colorTable)[outId].used_at.push_back((*altCoordsCache)[posXY[1]][posXY[0]]);
+					else
+						(*colorTable)[outId].used_at.push_back({ posXY[0], posXY[1] });
+					(*locks)[outId].unlock();
+					return outId;
 				}
 			}
-		}
 
-		//extend range if no images were found
-		this->grayscaleRange += 0.03;
-		delete closeImgs;
-		int out = findImageMatch(hsvPixels, posXY, recursionCount + 1);
-		this->grayscaleRange -= 0.03;
-		return out;
+			std::map<float, int, std::greater<float>> secondChance;
+			for (int extDepth = 0; extDepth < closeImgs->size(); extDepth++)
+			{
+				for (std::pair<float, int> imgPair : (*closeImgs)[extDepth])
+				{
+					secondChance.insert(std::pair<float, int>(imgPair.first / extDepth, imgPair.second));
+				}
+
+			}
+			delete closeImgs;
+			return secondChance.begin()->second;
+		}
 		
 	}
 	//colorful pixel :)
 	else
 	{
-		bool isInThinHueRange = distanceOnCircle(hsvPixels[0], 60) <= 15 || distanceOnCircle(hsvPixels[0], 180) <= 15 || distanceOnCircle(hsvPixels[0], 300) <= 15;
-		int leftLimit = hsvPixels[0] - hueRange * recursionCount;
-		int rightLimit = hsvPixels[0] + hueRange * recursionCount;
-		for (int limit = 60; limit <= 300; limit += 120)
-		{
-			if ((leftLimit < limit && hsvPixels[0] > limit))
-			{
-				rightLimit += (limit - leftLimit) * 0.5;
-				leftLimit = limit;
-				break;
-			}
-			else if (rightLimit > limit && hsvPixels[0] < limit)
-			{
-				leftLimit -=  (rightLimit - limit) * 0.5;
-				rightLimit = limit;
-				break;
-			}
-		}
+		bool isInThinHueRange = distanceOnCircle(hsvPixels[0], 60) <= 11 && hsvPixels[0] - 60 <= 8 ||
+			distanceOnCircle(hsvPixels[0], 180) <= 25 || 
+			distanceOnCircle(hsvPixels[0], 300) <= 30;
 		//find all images withing range
 		for (int i = 0; i < colorTable->size(); i++)
 		{
 			if ((*colorTable)[i].category != 0)
 				continue;
 
+			float satDiff = abs(hsvPixels[1] - (float) (*colorTable)[i].avr_sat);
+			float valDiff = abs(hsvPixels[2] - (float) (*colorTable)[i].avr_val);
+			int satExtensionCount = satDiff / saturationRange;
+			int valExtensionCount = valDiff / valueRange;
+			if (satExtensionCount > maxExtensions || valExtensionCount > maxExtensions)
+				continue;
+
+			int hueDiff = distanceOnCircle((*colorTable)[i].max_hue, hsvPixels[0]);
+			int hueDiffAbs = abs(hsvPixels[0] - (*colorTable)[i].max_hue);
+			
+			int hueExtensionCount;
+			if (isInThinHueRange)
+			{
+				hueExtensionCount = abs(1.5 * hueDiff / hueRange);
+				if (hueExtensionCount > maxExtensions)
+					continue;
+			}
+			else
+			{
+				hueExtensionCount = hueDiff / hueRange;
+				if (hueExtensionCount > maxExtensions)
+					continue;
+				bool skipImage = false;
+				for (int edgeCase = 60; edgeCase <= 300 && !skipImage; edgeCase += 120)
+				{
+					if (hueDiffAbs <= 180)
+					{
+						if ((edgeCase - (*colorTable)[i].max_hue) * (edgeCase - hsvPixels[0]) < 0)
+							skipImage = true;
+					}
+					else
+					{
+						int tmpMinHue = 360 + std::min(hsvPixels[0], (*colorTable)[i].max_hue);
+						int tmpMaxHue = std::max(hsvPixels[0], (*colorTable)[i].max_hue);
+						if ((edgeCase - tmpMinHue) * (edgeCase - tmpMaxHue) < 0 ||
+							(edgeCase + 360 - tmpMinHue)* (edgeCase + 360 - tmpMaxHue) < 0)
+							skipImage = true;
+					}
+				}
+				if (skipImage)
+					continue;
+
+			}
+			int maxExt = hueExtensionCount > satExtensionCount ? hueExtensionCount : satExtensionCount;
+			maxExt = maxExt > valExtensionCount ? maxExt : valExtensionCount;
+			if (maxExt <= maxExtensions)
+				(*closeImgs)[maxExt].insert(std::pair<float, int>((*colorTable)[i].max_hue_score, i));
+
 			/*if (distanceOnCircle(hsvPixels[0], (*colorTable)[i].max_hue) < hueRange * recursionCount &&
 				abs(hsvPixels[1] - (float) (*colorTable)[i].avr_sat) < saturationRange * recursionCount&&
 				abs(hsvPixels[2] - (float) (*colorTable)[i].avr_val) < valueRange * recursionCount)
 				closeImgs->insert(std::pair<float, int>((*colorTable)[i].max_hue_score, i));*/
 
-			
-
-			if (abs(hsvPixels[1] - (float) (*colorTable)[i].avr_sat) > saturationRange * recursionCount ||
+			/*if (abs(hsvPixels[1] - (float) (*colorTable)[i].avr_sat) > saturationRange * recursionCount ||
 				abs(hsvPixels[2] - (float) (*colorTable)[i].avr_val) > valueRange * recursionCount)
-				continue;
+				continue;*/
 
-			if (isInThinHueRange)
+			/*if (isInThinHueRange)
 			{
 				if (distanceOnCircle(hsvPixels[0], (*colorTable)[i].max_hue) < hueRange * recursionCount * 0.6)
 					closeImgs->insert(std::pair<float, int>((*colorTable)[i].max_hue_score, i));
@@ -382,99 +417,89 @@ int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int 
 			{
 				if ((*colorTable)[i].max_hue > leftLimit && ((*colorTable)[i].max_hue < (rightLimit - 360) || (*colorTable)[i].max_hue < 360))
 					closeImgs->insert(std::pair<float, int>((*colorTable)[i].max_hue_score, i));
-			}
+			}*/
 
 		}
 
 		//find image where the target hue appears the most often
 		if (!closeImgs->empty())
 		{
-			//stop after too many recursions (the lower maxRecursions is, the faster the matching)
-			if (recursionCount > maxRecursions)
-			{
-				(*locks)[closeImgs->begin()->second].lock();
-				(*colorTable)[closeImgs->begin()->second].times_used += 1;
-				if (useAltDistanceAlgo)
-					(*colorTable)[closeImgs->begin()->second].used_at.push_back(getAlternativeCoodrdinates(posXY));
-				else
-					(*colorTable)[closeImgs->begin()->second].used_at.push_back({ posXY[0], posXY[1] });
-				(*locks)[closeImgs->begin()->second].unlock();
-				int tmpOut = closeImgs->begin()->second;
-				delete closeImgs;
-				return tmpOut;
-			}
-
 			//evaluate all found images and return the first best image
-			for (std::pair<float, int> hueScore : *closeImgs)
+			for (int extDepth = 0; extDepth < closeImgs->size(); extDepth++)
 			{
-				if ((*colorTable)[hueScore.second].times_used == 0)
+				std::map<float, int, std::greater<float>> possibleImgs;
+				for (std::pair<float, int> hueScore : (*closeImgs)[extDepth])
 				{
-					(*locks)[hueScore.second].lock();
-					(*colorTable)[hueScore.second].times_used += 1;
-					if (useAltDistanceAlgo)
-						(*colorTable)[hueScore.second].used_at.push_back(getAlternativeCoodrdinates(posXY));
-					else
-						(*colorTable)[hueScore.second].used_at.push_back({ posXY[0], posXY[1] });
-					(*locks)[hueScore.second].unlock();
-					int tmpOut = hueScore.second;
-					delete closeImgs;
-					return tmpOut;
-				}
-
-				//check for distance to same picture, that are already placed
-				bool imgUsable = true;
-				//bool imgUsable = (*colorTable)[hueScore.second].times_used < 7;
-				for (int i = 0; i < (*colorTable)[hueScore.second].times_used && imgUsable; i++)
-				{
-					if (useAltDistanceAlgo)
+					if ((*colorTable)[hueScore.second].times_used == 0)
 					{
-						if (abs((*altCoordsCache)[posXY[1]][posXY[0]][0] - (*colorTable)[hueScore.second].used_at[i][0]) <= 1 &&
-							abs((*altCoordsCache)[posXY[1]][posXY[0]][1] - (*colorTable)[hueScore.second].used_at[i][1]) <= 1)
-						{
-							imgUsable = false;
-						}
-					}
-					else
-					{
-						if (pow(posXY[0] - (*colorTable)[hueScore.second].used_at[i][0], 2) +
-							pow(posXY[1] - (*colorTable)[hueScore.second].used_at[i][1], 2)
-							<= noRepeatRange)
-						{
-							imgUsable = false;
-						}
+						(*locks)[hueScore.second].lock();
+						(*colorTable)[hueScore.second].times_used += 1;
+						if (useAltDistanceAlgo)
+							(*colorTable)[hueScore.second].used_at.push_back(getAlternativeCoodrdinates(posXY));
+						else
+							(*colorTable)[hueScore.second].used_at.push_back({ posXY[0], posXY[1] });
+						(*locks)[hueScore.second].unlock();
+						int tmpOut = hueScore.second;
+						delete closeImgs;
+						return tmpOut;
 					}
 
+					//check for distance to same picture, that are already placed
+					bool imgUsable = true;
+					//bool imgUsable = (*colorTable)[hueScore.second].times_used < 7;
+					for (int i = 0; i < (*colorTable)[hueScore.second].times_used && imgUsable; i++)
+					{
+						if (useAltDistanceAlgo)
+						{
+							if (abs((*altCoordsCache)[posXY[1]][posXY[0]][0] - (*colorTable)[hueScore.second].used_at[i][0]) <= 1 &&
+								abs((*altCoordsCache)[posXY[1]][posXY[0]][1] - (*colorTable)[hueScore.second].used_at[i][1]) <= 1)
+							{
+								imgUsable = false;
+							}
+						}
+						else
+						{
+							if (pow(posXY[0] - (*colorTable)[hueScore.second].used_at[i][0], 2) +
+								pow(posXY[1] - (*colorTable)[hueScore.second].used_at[i][1], 2)
+								<= noRepeatRange)
+							{
+								imgUsable = false;
+							}
+						}
+
+					}
+					if (imgUsable)
+					{
+						possibleImgs.insert(hueScore);
+					}
 				}
-				if (imgUsable)
+				if (!possibleImgs.empty())
 				{
-					(*locks)[hueScore.second].lock();
-					(*colorTable)[hueScore.second].times_used += 1;
-					if (useAltDistanceAlgo)
-						(*colorTable)[hueScore.second].used_at.push_back((*altCoordsCache)[posXY[1]][posXY[0]]);
-					else
-						(*colorTable)[hueScore.second].used_at.push_back({ posXY[0], posXY[1] });
-					(*locks)[hueScore.second].unlock();
-					int tmpOut = hueScore.second;
 					delete closeImgs;
-					return tmpOut;
+					int outId = randomTopImgId(possibleImgs);
+					(*locks)[outId].lock();
+					(*colorTable)[outId].times_used += 1;
+					if (useAltDistanceAlgo)
+						(*colorTable)[outId].used_at.push_back((*altCoordsCache)[posXY[1]][posXY[0]]);
+					else
+						(*colorTable)[outId].used_at.push_back({ posXY[0], posXY[1] });
+					(*locks)[outId].unlock();
+					return outId;
 				}
 			}
-		}
-		if (recursionCount > maxRecursions)
-		{
+			
+			std::map<float, int, std::greater<float>> secondChance;
+			for (int extDepth = 0; extDepth < closeImgs->size(); extDepth++)
+			{
+				for (std::pair<float, int> imgPair : (*closeImgs)[extDepth])
+				{
+					secondChance.insert(std::pair<float, int>(imgPair.first / extDepth, imgPair.second));
+				}
+
+			}
 			delete closeImgs;
-			return 0;
+			return secondChance.begin()->second;
 		}
-		//extend range if no images were found
-		/*this->hueRange += 5;
-		this->saturationRange += 0.015;
-		this->valueRange += 0.015;*/
-		delete closeImgs;
-		int out = findImageMatch(hsvPixels, posXY, recursionCount + 1);
-		/*this->hueRange -= 5;
-		this->saturationRange -= 0.015;
-		this->valueRange -= 0.015;*/
-		return out;
 	}
 
 
@@ -483,53 +508,30 @@ int Pixelizer::findImageMatch(std::array<float, 3> hsvPixels, int posXY[2], int 
 	return 0;
 }
 
-bool Pixelizer::imgWithingHSVRange(std::array<float, 3> hsvTarget, std::array<float, 3> hsvComp, int rangeExtender, bool isInThinHueRange)
+int Pixelizer::randomTopImgId(const std::map<float, int, std::greater<float>> &imgs)
 {
-	if (abs(hsvTarget[1] - (float)hsvComp[1]) > saturationRange * rangeExtender ||
-		abs(hsvTarget[2] - (float)hsvComp[2]) > valueRange * rangeExtender)
-		return false;
+	if (imgs.size() == 1)
+		return imgs.begin()->second;
+	std::vector<int> possibleImgs;
+	possibleImgs.push_back(imgs.begin()->second);
+	float topVal = 0.75 * imgs.begin()->second;
 
-	if (isInThinHueRange)
+	bool isFirst = true;
+	for (auto imgPair : imgs)
 	{
-		if (distanceOnCircle(hsvTarget[0], hsvComp[0]) < hueRange * rangeExtender * 0.5)
-			return true;
-		else
-			return false;
+		if (isFirst)
+		{
+			isFirst = false;
+			continue;
+		}
+		if (imgPair.first >= topVal)
+			possibleImgs.push_back(imgPair.second);
 	}
 	
-	int leftLimit = hsvTarget[0] - hueRange * rangeExtender;
-	int rightLimit = hsvTarget[0] + hueRange * rangeExtender;
-	for (int limit = 60; limit <= 300; limit += 120)
-	{
-		if ((leftLimit < limit && hsvTarget[0] > limit))
-		{
-			leftLimit = limit;
-			break;
-		}
-		else if (rightLimit > limit && hsvTarget[0] < limit)
-		{
-			rightLimit = limit;
-			break;
-		}
-	}
+	if (possibleImgs.size() < 2)
+		return imgs.begin()->second;
 
-	if (leftLimit >= 0 && rightLimit < 360)
-	{
-		if (hsvComp[0] > leftLimit && hsvComp[0] < rightLimit)
-			return	true;
-	}
-	else if (leftLimit < 0 && rightLimit < 360)
-	{
-		if (hsvComp[0] > (360 + leftLimit) && hsvComp[0] < rightLimit)
-			return	true;
-	}
-	else if (leftLimit >= 0 && rightLimit >= 360)
-	{
-		if (hsvComp[0] > leftLimit && hsvComp[0] < (rightLimit - 360))
-			return	true;
-	}
-
-	return false;
+	return possibleImgs[rand() % possibleImgs.size()];
 }
 
 std::array<int, 2> Pixelizer::getAlternativeCoodrdinates(int* posXY)

@@ -157,7 +157,7 @@ void PixelizerGUI::generatePixImage()
 		targetPath = "";
 	}
 	float scalingFactor = 1;
-	std::string colorTablePath = "color_table_v1.json";
+	std::string colorTablePath = "color_table_v2.2.json";
 	std::string imgOutName = "result_tmp.bmp";
 	int pixelResolution = 75;
 	int noRepeatRange = 15;
@@ -221,8 +221,8 @@ void PixelizerGUI::generatePixImage()
 				printLine();
 				print("Output path: ");
 				imgOutName = getTextInput();
-				if (imgOutName.find(".bmp") == imgOutName.size() - 4)
-					throw std::exception("invalid file name (has to end with .bmp)");
+				/*if (imgOutName.find(".bmp") == imgOutName.size() - 4)
+					throw std::exception("invalid file name (has to end with .bmp)");*/
 				break;
 			case 4:
 				printLine();
