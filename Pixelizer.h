@@ -5,156 +5,86 @@
 #include <array>
 #include <string>
 #include <mutex>
+#include "PixTools.h"
 
 using namespace cimg_library;
-
-struct imgData {
-	float avr_sat, avr_val, avr_val_score, max_hue, max_hue_score;
-	int category, times_used = 0;
-	std::string file_path;
-	std::vector<std::array<int, 2>> used_at;
-};
 
 class Pixelizer
 {
 private:
+	/* holds data of all images from the image library */
 	std::vector<imgData>* colorTable;
+	/* used for changing the values of "times used" and "used at"*/
 	std::vector<std::mutex>* locks;
-	float grayscaleRange, hueRange, saturationRange, valueRange, noRepeatRange;
-	int pixelImgsResolution, maxExtensions;
-	CImg<unsigned char>* targetImg;
+	/** base multiplier for "maxExtensions"; (multiplier * maxExtensions) --> maximum +/- range from a value */
+	float grayscaleRange, hueRange, saturationRange, valueRange, maxExtensions;
+	/* range in which an image (optimally) shouldn't be used twice */
+	int noRepeatRange;
+	/* resolution of the small (squared) images */
+	int pixelImgsResolution;
+	/* the image which is the template for the final image */
+	CImg<unsigned char>* templateImg;
+	/* file paths to all small images, that will be on the final image */
 	std::vector<std::vector<std::string>>* pixelImgPaths;
+	/* file path to the output file (without ".bmp") */
 	const char* resultFile;
+	/* 
+	 whether an alternative algorithm should be used for the distance calculation
+	 1. a "grid" will be placed on the template image
+	 2. when an image is placed in one of the squares, the coordinates of that square will be stored under "used_at" under "colorTable"
+	 3. the same image won't (optimally) be used in that or the 8 neighbour squares
+	*/
 	bool useAltDistanceAlgo;
+	/* the amount of divisions along the x-axis if the image (when using the alternative distance algorithm) */
 	int divisions;
-	int threads, threadsDone;
+	/* the amount of threads used for the current operation (matching or finalizing) */
+	int threads;
+	/* how many threads have finished the curred operation */
+	int threadsDone;
+	int splitImagesOutput, splitImgTsDone;
+	/* lock for updating the threads done variable */
 	std::mutex tsDoneLock;
-	std::vector<std::vector<std::array<int, 2>>>* altCoordsCache;
-	float matchingProgressPercent;
+	/* percentage of the current operation (0 min, 100 max) */
+	float progressPercent;
+	/* lock for updating the "progressPercent" variable */
 	std::mutex progressLock;
+	/* cache of the coordinates when using the alt distance algo */
+	std::vector<std::vector<std::array<int, 2>>>* altCoordsCache;
 
-	void findImageMatchesThreadded(int startX, int endX);
-	void matchingProgressThread();
-	float distanceOnCircle(float val1, float val2);
-	int findImageMatch(std::array<float, 3> hsvPixels, int posXY[2]);
+	/* searches for all image matches in given x intervall
+	 startX: first column that this thread takes care of
+	 endX - 1: last column
+	*/
+	void findImageMatchesThread(int startX, int endX);
+	/* displays the progress, of the currently running operation, in the console */
+	void progressThread();
+	/* assembles an image in the given intervall; isAlong: true --> the final image will be assembled in one piece */
+	void creatFinalImgThread(int startX, int endX, int threadNum, bool isAlone);
+	/* searches for all images that visually could be a match to the current pixel
+	 targetPixel: the hsv pixel to which the image match should be found
+	 posXY: X-Y-coordinate of the target pixel
+
+	 return value: element id of the image match in "colorTable"
+	*/
+	int findImageMatch(std::array<float, 3> targetPixel, int posXY[2]);
+	/* From all visually fitting images choose the one that hasn't been used in a close range allready */
+	int imgMatchByDistance(const std::vector<std::map<float, int, std::greater<float>>>* const closeImgs, int posXY[2]);
+	/* from all fitting images, choose one randomly, whilst prioritising images with a high score (float value in the map) */
 	int randomTopImgId(const std::map<float, int, std::greater<float>> &imgs);
+	/* returns allternative coordinates */
 	std::array<int, 2> getAlternativeCoodrdinates(int* posXY);
+	/* returns allternative coordinates */
 	std::array<int, 2> getAlternativeCoodrdinates(std::array<int, 2> posXY);
 public:
-	Pixelizer(const char* targetImgPath, const  char* colorTablePath, const  char* resultFile, float targetImgScalingFactor, int threads = 8, int pixelImgsResolution = 150, float noRepeatRange = 7, int maxExtensions = 30, bool fastDistance = false);
+	Pixelizer(const char* targetImgPath, const  char* colorTablePath, const  char* resultFile, float targetImgScalingFactor, std::vector<imgData>* colorTable = nullptr,
+		int threads = 8, int pixelImgsResolution = 150, float noRepeatRange = 7, int maxExtensions = 15, bool altDistance = false, int splitImages = 1);
 	~Pixelizer();
+	/* finds all image matches to the template image */
 	void findImageMatches();
-	CImg<unsigned char> createFinalImg();
+	/* assembles the final output image(s) and saves it/them */
+	void createFinalImg();
+	/* returns the colorTable (for caching, since reading and parsing takes about 45 seconds ) */
+	std::vector<imgData>* getColorTable();
 
-	static int* hsvToRgb(float hsv[3])
-	{
-		float tmpRgb[3];
-		int out[3];
-		int i;
-		float f, p, q, t;
-
-		if (hsv[1] < 0.01)
-		{
-			out[0] = (int)(hsv[2] * 255);
-			out[1] = (int)(hsv[2] * 255);
-			out[2] = (int)(hsv[2] * 255);
-			//out = { (int)(hsv[2] * 255), (int)(hsv[2] * 255), (int)(hsv[2] * 255) };
-			return out;
-		}
-		hsv[0] /= 60;
-		i = hsv[0];
-		f = hsv[0] - i;
-		p = hsv[2] * (1 - hsv[1]);
-		q = hsv[2] * (1 - hsv[1] * f);
-		t = hsv[2] * (1 - hsv[1] * (1 - f));
-
-		switch (i)
-		{
-		case 0:
-			tmpRgb[0] = hsv[2];
-			tmpRgb[1] = t;
-			tmpRgb[2] = p;
-			break;
-		case 1:
-			tmpRgb[0] = q;
-			tmpRgb[1] = hsv[2];
-			tmpRgb[2] = p;
-			break;
-		case 2:
-			tmpRgb[0] = p;
-			tmpRgb[1] = hsv[2];
-			tmpRgb[2] = t;
-			break;
-		case 3:
-			tmpRgb[0] = p;
-			tmpRgb[1] = q;
-			tmpRgb[2] = hsv[2];
-			break;
-		case 4:
-			tmpRgb[0] = t;
-			tmpRgb[1] = p;
-			tmpRgb[2] = hsv[2];
-			break;
-		default:
-			tmpRgb[0] = hsv[2];
-			tmpRgb[1] = p;
-			tmpRgb[2] = q;
-			break;
-		}
-
-		tmpRgb[0] *= 255;
-		tmpRgb[1] *= 255;
-		tmpRgb[2] *= 255;
-
-		out[0] = (int)round(tmpRgb[0]);
-		out[1] = (int)round(tmpRgb[1]);
-		out[2] = (int)round(tmpRgb[2]);
-		//out = { (int)round(tmpRgb[0]), (int)round(tmpRgb[1]),(int)round(tmpRgb[2]) };
-
-		return out;
-	}
-
-	static std::array<float, 3> rgbToHsv(int rgb[3])
-	{
-		//straight from so
-		std::array<float, 3> hsv;
-		int min = rgb[0] < rgb[1] ? rgb[0] : rgb[1];
-		min = min < rgb[2] ? min : rgb[2];
-		int max = rgb[0] > rgb[1] ? rgb[0] : rgb[1];
-		max = max > rgb[2] ? max : rgb[2];
-
-		hsv[2] = (float)max / 255;
-		int delta = max - min;
-		if (delta == 0)
-		{
-			hsv[0] = 0;
-			hsv[1] = 0;
-			return hsv;
-		}
-
-		if (max > 0)
-		{
-			hsv[1] = (float)delta / max;
-		}
-		else
-		{
-			hsv[0] = 0;
-			hsv[1] = 0;
-			return hsv;
-		}
-
-		if (rgb[0] == max)
-			hsv[0] = (float)(rgb[1] - rgb[2]) / delta;
-		else if (rgb[1] == max)
-			hsv[0] = 2 + (float)(rgb[2] - rgb[0]) / delta;
-		else
-			hsv[0] = 4 + (float)(rgb[0] - rgb[1]) / delta;
-
-		hsv[0] *= 60;
-		if (hsv[0] < 0)
-			hsv[0] += 360;
-
-		return hsv;
-	}
 };
 

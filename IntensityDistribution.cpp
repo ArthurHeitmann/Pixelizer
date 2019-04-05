@@ -17,7 +17,7 @@ void IntensityDistribution::calcAllValues(int channel, int valueRange, int resta
 {
 	for (int x = 0; x < valueRange; x++)
 	{
-		//calculate value at x and add it to the distribution list/vector
+		//calculate value at x and add it to the distribution vector
 		distribution[channel].push_back(calcValueAt(channel, x));
 
 		if (restartRange)
